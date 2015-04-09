@@ -13,7 +13,7 @@ def test_autoall():
     exp_fun = ['foo']
     exp_cls = ['Blah']
     testdir = os.path.dirname(__file__)
-    filename = os.path.join(testdir, 'all.h')
+    filename = os.path.join(testdir, 'all.cxx')
     buildbase = os.path.join(testdir, 'build')
     def check_all(parser):
         obs_var, obs_fun, obs_cls = autoall.findall(filename, parsers=parser, 
@@ -22,7 +22,7 @@ def test_autoall():
         assert_equal_or_diff(obs_var, exp_var)
         assert_equal_or_diff(obs_fun, exp_fun)
         assert_equal_or_diff(obs_cls, exp_cls)
-    for parser in 'gccxml', 'clang':
+    for parser in 'gccxml', 'castxml', 'clang':
         cleanfs(buildbase + '-' + parser)
         if PARSERS_AVAILABLE[parser]:
             yield check_all, parser

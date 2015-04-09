@@ -602,6 +602,27 @@ def test_cpp_template_funcname():
     for t, ak, exp in cases:
         yield check_cpp_template_funcname, t, ak, exp  # Check that the case works,
 
+
+gccxml_castxml_cases = (
+    ('str', 'std::string'),
+    (('str',), 'std::string'),
+    ('f4', 'float'),
+    ('nucid', 'int'),
+    (('nucid',), 'int'), 
+    (('set', 'complex'), 'std::set<xdress_extra_types.complex_t>'),
+    (('map', 'nucid', 'float'), 'std::map<int,double>'),
+    (('pair', 'nucid', 'float'), 'std::pair<int,double>'),
+    ('comp_map', 'std::map<int,double>'),
+    (('char', '*'), 'char *'),
+    (('char', 42), 'char [42]'),
+    (('map', 'nucid', ('set', 'nucname')), 
+        'std::map<int,std::set<std::string> >'),
+    (('intrange', 1, 2), 'int'), 
+    (('nucrange', 92000, 93000), 'int'),
+    (('range', 'int32', 1, 2), 'int'), 
+    (('range', 'nucid', 92000, 93000), 'int'), 
+)
+
 def check_gccxml_type(t, exp):
     obs = ts.gccxml_type(t)
     assert_equal(exp, obs)
@@ -609,27 +630,18 @@ def check_gccxml_type(t, exp):
 @unit
 @with_setup(add_new_refined, del_new_refined)
 def test_gccxml_type():
-    cases = (
-        ('str', 'std::string'),
-        (('str',), 'std::string'),
-        ('f4', 'float'),
-        ('nucid', 'int'),
-        (('nucid',), 'int'), 
-        (('set', 'complex'), 'std::set<xdress_extra_types.complex_t>'),
-        (('map', 'nucid', 'float'), 'std::map<int,double>'),
-        (('pair', 'nucid', 'float'), 'std::pair<int,double>'),
-        ('comp_map', 'std::map<int,double>'),
-        (('char', '*'), 'char *'),
-        (('char', 42), 'char [42]'),
-        (('map', 'nucid', ('set', 'nucname')), 
-            'std::map<int,std::set<std::string> >'),
-        (('intrange', 1, 2), 'int'), 
-        (('nucrange', 92000, 93000), 'int'),
-        (('range', 'int32', 1, 2), 'int'), 
-        (('range', 'nucid', 92000, 93000), 'int'), 
-    )
-    for t, exp in cases:
+    for t, exp in gccxml_castxml_cases:
         yield check_gccxml_type, t, exp  # Check that the case works,
+
+def check_castxml_type(t, exp):
+    obs = ts.castxml_type(t)
+    assert_equal(exp, obs)
+
+@unit
+@with_setup(add_new_refined, del_new_refined)
+def test_castxml_type():
+    for t, exp in gccxml_castxml_cases:
+        yield check_castxml_type, t, exp  # Check that the case works,
 
 @unit
 @with_setup(lambda: None, lambda: os.remove('hoover'))

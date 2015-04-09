@@ -216,7 +216,7 @@ def test_describe_cpp():
     rc = parse_global_rc()
     clang_includes = rc.clang_includes if 'clang_includes' in rc else ()
     testdir = os.path.dirname(__file__)
-    fname = os.path.join(testdir, 'toaster.h')
+    fname = os.path.join(testdir, 'toaster.cxx')
     buildbase = os.path.join(testdir, 'build')
     ts.register_class('Base', ('T', 'i'), cpp_type='Base')
     ts.register_class('Point', ('B', 'C'), cpp_type='Point')
@@ -243,7 +243,7 @@ def test_describe_cpp():
                               builddir=buildbase + '-' + parser, verbose=False, 
                               ts=ts, clang_includes=clang_includes)
             assert_equal_or_diff(obs, exp)
-    for parser in 'gccxml', 'clang':
+    for parser in 'gccxml', 'castxml', 'clang':
         cleanfs(buildbase + '-' + parser)
         if PARSERS_AVAILABLE[parser]:
             yield check, parser

@@ -855,6 +855,14 @@ class TypeSystem(object):
         return gxt
 
     @memoize_method
+    def castxml_type(self, t):
+        """Given a type t, returns the corresponding CastXML type name."""
+        cppt = self.cpp_type(t)
+        gxt = cppt.replace('< ', '<').replace(' >', '>').\
+                   replace('>>', '> >').replace(', ', ',')
+        return gxt
+
+    @memoize_method
     def cython_nptype(self, t, depth=0):
         """Given a type t, returns the corresponding numpy type.  If depth is
         greater than 0 then this returns of a list of numpy types for all internal

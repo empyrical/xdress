@@ -158,7 +158,15 @@ class GccxmlFinder(object):
             names.add(utils.parse_template(name))
             self._pprint(child)
         return sorted(names)
-            
+
+
+class CastxmlFinder(GccxmlFinder):
+    """Class used for discovering APIs using an etree representation of
+    the CastXML AST."""
+
+    def __init__(self, *args, **kwargs):
+        super(CastxmlFinder, self).__init__(*args, **kwargs)
+
 
 def gccxml_findall(filename, includes=(), defines=('XDRESS',), undefines=(),
                    extra_parser_args=(), verbose=False, debug=False, 
@@ -207,6 +215,57 @@ def gccxml_findall(filename, includes=(), defines=('XDRESS',), undefines=(),
     onlyin = set([filename] + 
                  [basename + '.' + h for h in utils._hdr_exts if h.startswith('h')])
     finder = GccxmlFinder(root, onlyin=onlyin, verbose=verbose)
+    finder.visit()
+    return finder.variables, finder.functions, finder.classes
+
+
+def castxml_findall(filename, includes=(), defines=('XDRESS',), undefines=(),
+                   extra_parser_args=(), verbose=False, debug=False,
+                   builddir='build', language='c++', clang_includes=()):
+    """Automatically finds all API elements in a file via CastXML.
+
+    Parameters
+    ----------
+    filename : str
+        The path to the file
+    includes : list of str, optional
+        The list of extra include directories to search for header files.
+    defines : list of str, optional
+        The list of extra macro definitions to apply.
+    undefines : list of str, optional
+        The list of extra macro undefinitions to apply.
+    extra_parser_args : list of str, optional
+        Further command line arguments to pass to the parser.
+    verbose : bool, optional
+        Flag to diplay extra information while describing the class.
+    debug : bool, optional
+        Flag to enable/disable debug mode.
+    builddir : str, optional
+        Location of -- often temporary -- build files.
+    language : str
+        Valid language flag.
+    clang_includes : ignored
+
+    Returns
+    -------
+    variables : list of strings
+        A list of variable names to wrap from the file.
+    functions : list of strings
+        A list of function names to wrap from the file.
+    classes : list of strings
+        A list of class names to wrap from the file.
+
+    """
+    if os.name == 'nt':
+        # GCC-XML and/or Cygwin wants posix paths on Windows.
+        filename = posixpath.join(*ntpath.split(filename))
+    root = astparsers.castxml_parse(filename, includes=includes, defines=defines,
+            undefines=undefines, extra_parser_args=extra_parser_args, verbose=verbose, 
+            debug=debug, builddir=builddir)
+    basename = filename.rsplit('.', 1)[0]
+    onlyin = set([filename] + 
+                 [basename + '.' + h for h in utils._hdr_exts if h.startswith('h')])
+    finder = CastxmlFinder(root, onlyin=onlyin, verbose=verbose)
     finder.visit()
     return finder.variables, finder.functions, finder.classes
 
@@ -429,12 +488,13 @@ def pycparser_findall(filename, includes=(), defines=('XDRESS',), undefines=(),
 
 _finders = {
     'clang': clang_findall,
+    'castxml': castxml_findall,
     'gccxml': gccxml_findall,
     'pycparser': pycparser_findall,
     }
 
 def findall(filename, includes=(), defines=('XDRESS',), undefines=(), 
-            extra_parser_args=(), parsers='gccxml', verbose=False, debug=False, 
+            extra_parser_args=(), parsers='castxml', verbose=False, debug=False, 
             builddir='build', language='c++', clang_includes=()):
     """Automatically finds all API elements in a file.  This is the main entry point.
 
@@ -451,11 +511,12 @@ def findall(filename, includes=(), defines=('XDRESS',), undefines=(),
     extra_parser_args : list of str, optional
         Further command line arguments to pass to the parser.
     parsers : str, list, or dict, optional
-        The parser / AST to use to use for the file.  Currently 'clang', 'gccxml', 
-        and 'pycparser' are supported, though others may be implemented in the 
-        future.  If this is a string, then this parser is used.  If this is a list, 
-        this specifies the parser order to use based on availability.  If this is
-        a dictionary, it specifies the order to use parser based on language, i.e.
+        The parser / AST to use to use for the file.  Currently 'clang',
+        'castxml', 'gccxml', and 'pycparser' are supported, though others may be
+        implemented in the future.  If this is a string, then this parser is used.
+        If this is a list, this specifies the parser order to use based on
+        availability.  If this is a dictionary, it specifies the order to use
+        parser based on language, i.e.
         ``{'c' ['pycparser', 'gccxml'], 'c++': ['gccxml', 'pycparser']}``.
     verbose : bool, optional
         Flag to diplay extra information while describing the class.

@@ -57,7 +57,7 @@ GENERATED_PATHS = [
 # master test function which generates the individual tests.
 @integration
 def test_all():
-    parsers = ['gccxml', 'clang']
+    parsers = ['gccxml', 'castxml', 'clang']
     cases = [{'parser': p} for p in parsers]
 
     cwd = os.getcwd()

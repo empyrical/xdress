@@ -79,18 +79,22 @@ PARSERS_AVAILABLE = {
     'clang': clang is not None,
     'pycparser': pycparser is not None,
     }
-with tempfile.NamedTemporaryFile() as f:
-    # If gccxml is not availble, an OSError is raised.  Otherwise, it will
-    # return 0 (typically indicates successful invocation).
-    try:
-        retcode = subprocess.call(['gccxml'], stdout=f, stderr=f)
-        if retcode == 0:
-            PARSERS_AVAILABLE['gccxml'] = True
-        else:
-            PARSERS_AVAILABLE['gccxml'] = False
-    except OSError:
-        PARSERS_AVAILABLE['gccxml'] = False
-del f
+def _add_executable_if_available(name):
+    with tempfile.NamedTemporaryFile() as f:
+        # If the executable is not availble, an OSError is raised.
+        # Otherwise, it will return 0 (typically indicates successful
+        # invocation).
+        try:
+            retcode = subprocess.call([name], stdout=f, stderr=f)
+            if retcode == 0:
+                PARSERS_AVAILABLE[name] = True
+            else:
+                PARSERS_AVAILABLE[name] = False
+        except OSError:
+            PARSERS_AVAILABLE[name] = False
+        del f
+_add_executable_if_available('gccxml')
+_add_executable_if_available('castxml')
 
 if sys.version_info[0] >= 3:
     basestring = str
@@ -146,7 +150,6 @@ def not_implemented(obj):
 #
 # GCC-XML Describers
 #
-
 @_memoize_parser
 def gccxml_parse(filename, includes=(), defines=('XDRESS',), undefines=(),
                  extra_parser_args=(), verbose=False, debug=False, builddir='build',
@@ -202,6 +205,71 @@ def gccxml_parse(filename, includes=(), defines=('XDRESS',), undefines=(),
         root = etree.parse(f)
     except etree.XMLSyntaxError:
         raise etree.XMLSyntaxError("failed to parse GCC-XML results, this likely "
+                                   "means that the C/C++ code is not valid. please "
+                                   "see the top most build error.")
+    f.close()
+    return root
+
+#
+# CastXML Describers
+#
+@_memoize_parser
+def castxml_parse(filename, includes=(), defines=('XDRESS',), undefines=(),
+                  extra_parser_args=(), verbose=False, debug=False, builddir='build',
+                  clang_includes=()):
+    """Use CastXML to parse a file. This function is automatically memoized.
+
+    Parameters
+    ----------
+    filename : str
+        The path to the file.
+    includes : list of str, optional
+        The list of extra include directories to search for header files.
+    defines : list of str, optional
+        The list of extra macro definitions to apply.
+    undefines : list of str, optional
+        The list of extra macro undefinitions to apply.
+    extra_parser_args : list of str, optional
+        Further command line arguments to pass to the parser.
+    verbose : bool, optional
+        Flag to display extra information while describing the class.
+    debug : bool, optional
+        Flag to enable/disable debug mode.
+    builddir : str, optional
+        Location of -- often temporary -- build files.
+    clang_includes : ignored
+
+    Returns
+    -------
+    root : XML etree
+        An in memory tree representing the parsed file.
+    """
+    drive, xmlname = os.path.splitdrive(filename)
+    if len(drive) > 0:
+        # Windows drive handling, 'C:' -> 'C_'
+        xmlname = drive.replace(':', '_') + xmlname
+    xmlname = xmlname.replace(os.path.sep, '_').rsplit('.', 1)[0] + '.xml'
+    xmlname = os.path.join(builddir, xmlname)
+    cmd = ['castxml', '--castxml-gccxml', '-o', xmlname]
+    cmd += extra_parser_args
+    cmd += ['-I' + i for i in includes]
+    cmd += ['-D' + d for d in defines]
+    cmd += ['-U' + u for u in undefines]
+    cmd += [filename]
+    print(" ".join(cmd))
+    if verbose:
+        print(" ".join(cmd))
+    if os.path.isfile(xmlname):
+        f = io.open(xmlname, 'r+b')
+    else:
+        ensuredirs(xmlname)
+        f = io.open(xmlname, 'w+b')
+        subprocess.call(cmd)
+    f.seek(0)
+    try:
+        root = etree.parse(f)
+    except etree.XMLSyntaxError:
+        raise etree.XMLSyntaxError("failed to parse CastXML results, this likely "
                                    "means that the C/C++ code is not valid. please "
                                    "see the top most build error.")
     f.close()
@@ -331,7 +399,7 @@ def pick_parser(file_or_lang, parsers):
         The path to the file OR a valid language flag.
     parsers : str, list, or dict, optional
         The parser / AST to use to use for the file.  Currently 'clang', 'gccxml',
-        and 'pycparser' are supported, though others may be implemented in the
+        'castxml', and 'pycparser' are supported, though others may be implemented in the
         future.  If this is a string, then this parser is used.  If this is a list,
         this specifies the parser order to use based on availability.  If this is
         a dictionary, it specifies the order to use parser based on language, i.e.
@@ -402,6 +470,15 @@ def dumpast(filename, parsers, sourcedir, includes=(), defines=('XDRESS',),
         else:
             _pformat_etree_inplace(root)
             print(etree.tostring(root))
+    elif parser == 'castxml':
+        root = castxml_parse(filename, includes=includes, defines=defines,
+                            undefines=undefines, verbose=verbose, debug=debug,
+                            builddir=builddir)
+        if HAVE_LXML:
+            print(etree.tostring(root, pretty_print=True))
+        else:
+            _pformat_etree_inplace(root)
+            print(etree.tostring(root))
     else:
         sys.exit(parser + " is not a valid parser")
 
@@ -426,8 +503,8 @@ class ParserPlugin(Plugin):
         variables=(),
         functions=(),
         classes=(),
-        parsers={'c': ['pycparser', 'clang', 'gccxml'],
-                 'c++':['clang', 'gccxml', 'pycparser']},
+        parsers={'c': ['pycparser', 'clang', 'castxml,' 'gccxml'],
+                 'c++':['clang', 'castxml', 'gccxml', 'pycparser']},
         clear_parser_cache_period=50,
         dumpast=NotSpecified,
         extra_parser_args=(),

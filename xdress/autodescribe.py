@@ -374,7 +374,6 @@ hack_template_args = {
 #
 # GCC-XML Describers
 #
-
 def gccxml_describe(filename, name, kind, includes=(), defines=('XDRESS',),
                     undefines=(), extra_parser_args=(), ts=None, verbose=False,
                     debug=False, builddir='build', onlyin=None, language='c++',
@@ -428,6 +427,67 @@ def gccxml_describe(filename, name, kind, includes=(), defines=('XDRESS',),
         onlyin = set([filename])
     describers = {'class': GccxmlClassDescriber, 'func': GccxmlFuncDescriber,
                   'var': GccxmlVarDescriber}
+    describer = describers[kind](name, root, onlyin=onlyin, ts=ts, verbose=verbose)
+    describer.visit()
+    return describer.desc
+
+
+#
+# CastXML Describers
+#
+def castxml_describe(filename, name, kind, includes=(), defines=('XDRESS',),
+                    undefines=(), extra_parser_args=(), ts=None, verbose=False,
+                    debug=False, builddir='build', onlyin=None, language='c++',
+                    clang_includes=()):
+    """Use GCC-XML to describe the class.
+
+    Parameters
+    ----------
+    filename : str
+        The path to the file.
+    name : str
+        The name to describe.
+    kind : str
+        The kind of type to describe, valid flags are 'class', 'func', and 'var'.
+    includes: list of str, optional
+        The list of extra include directories to search for header files.
+    defines: list of str, optional
+        The list of extra macro definitions to apply.
+    undefines: list of str, optional
+        The list of extra macro undefinitions to apply.
+    extra_parser_args : list of str, optional
+        Further command line arguments to pass to the parser.
+    ts : TypeSystem, optional
+        A type system instance.
+    verbose : bool, optional
+        Flag to diplay extra information while describing the class.
+    debug : bool, optional
+        Flag to enable/disable debug mode.
+    builddir : str, optional
+        Location of -- often temporary -- build files.
+    onlyin: set of str
+        The paths to the files that the definition is allowed to exist in.
+    language : str
+        Valid language flag.
+    clang_includes : ignored
+
+    Returns
+    -------
+    desc : dict
+        A dictionary describing the class which may be used to generate
+        API bindings.
+    """
+    # CastXML and/or Cygwin wants posix paths on Windows.
+    posixfilename = posixpath.join(*ntpath.split(filename)) if os.name == 'nt' \
+                    else filename
+    root = astparsers.castxml_parse(posixfilename, includes=includes, defines=defines,
+                                   undefines=undefines,
+                                   extra_parser_args=extra_parser_args,
+                                   verbose=verbose, debug=debug, builddir=builddir)
+    if onlyin is None:
+        onlyin = set([filename])
+    describers = {'class': CastxmlClassDescriber, 'func': CastxmlFuncDescriber,
+                  'var': CastxmlVarDescriber}
     describer = describers[kind](name, root, onlyin=onlyin, ts=ts, verbose=verbose)
     describer.visit()
     return describer.desc
@@ -972,6 +1032,14 @@ class GccxmlClassDescriber(GccxmlBaseDescriber):
                 meth(child)
         self._level -= 1
 
+
+class CastxmlClassDescriber(GccxmlClassDescriber):
+    """Class used to generate class descriptions via CastXML output."""
+
+    def __init__(self, *args, **kwargs):
+        super(CastxmlClassDescriber, self).__init__(*args, **kwargs)
+
+
 class GccxmlVarDescriber(GccxmlBaseDescriber):
     """Class used to generate variable descriptions via GCC-XML output."""
 
@@ -1035,6 +1103,13 @@ class GccxmlVarDescriber(GccxmlBaseDescriber):
                        "expected it in {2!r}.")
                 msg = msg.format(self.name, node.attrib['file'], self.onlyin)
                 raise RuntimeError(msg)
+
+
+class CastxmlVarDescriber(GccxmlVarDescriber):
+    """Class used to generate variable descriptions via CastXML output."""
+
+    def __init__(self, *args, **kwargs):
+        super(CastxmlVarDescriber, self).__init__(*args, **kwargs)
 
 
 class GccxmlFuncDescriber(GccxmlBaseDescriber):
@@ -1111,10 +1186,17 @@ class GccxmlFuncDescriber(GccxmlBaseDescriber):
                 raise RuntimeError(msg)
             self.visit_function(n)
 
+
+class CastxmlFuncDescriber(GccxmlFuncDescriber):
+    """Class used to generate function descriptions via GCC-XML output."""
+
+    def __init__(self, *args, **kwargs):
+        super(CastxmlFuncDescriber, self).__init__(*args, **kwargs)
+
+
 #
 # Clang Describers
 #
-
 def clang_describe(filename, name, kind, includes=(), defines=('XDRESS',),
                    undefines=(), extra_parser_args=(), ts=None, verbose=False,
                    debug=False, builddir=None, onlyin=None, language='c++',
@@ -2177,6 +2259,7 @@ def _make_includer(filenames, builddir, language, verbose=False):
 
 _describers = {
     'clang': clang_describe,
+    'castxml': castxml_describe,
     'gccxml': gccxml_describe,
     'pycparser': pycparser_describe,
     }

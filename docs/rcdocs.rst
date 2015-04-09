@@ -62,7 +62,7 @@ xdress.autoall
     *default:* ().
 :includes: Additional include directories, *default:* ['.'].
 :parsers: Parser(s) name, list, or dict, *default:* {'c': ['pycparser', 'clang',
-    'gccxml'], 'c++': ['clang', 'gccxml', 'pycparser']}.
+    'gccxml', 'castxml'], 'c++': ['clang', 'gccxml', 'castxml', 'pycparser']}.
 :undefines: Unset additional macro definitions, *default:* [].
 :variables: A list of variable names in sequence, mapping, or apiname format,
     *default:* ().
@@ -86,7 +86,7 @@ xdress.autodescribe
     *default:* ().
 :includes: Additional include directories, *default:* ['.'].
 :parsers: Parser(s) name, list, or dict, *default:* {'c': ['pycparser', 'clang',
-    'gccxml'], 'c++': ['clang', 'gccxml', 'pycparser']}.
+    'gccxml', 'castxml'], 'c++': ['clang', 'gccxml', 'castxml', 'pycparser']}.
 :undefines: Unset additional macro definitions, *default:* [].
 :variables: A list of variable names in sequence, mapping, or apiname format,
     *default:* ().
