@@ -12,7 +12,9 @@ import re
 import ast
 import sys
 import glob
+import platform
 import functools
+import subprocess
 from copy import deepcopy
 from pprint import pformat
 from collections import Mapping, Iterable, Hashable, Sequence, namedtuple
@@ -917,3 +919,20 @@ def ensure_apiname(name):
     ensured = name._replace(**updates)
     return name if name == ensured else ensured
 
+# From pygccxml 1.7.1
+def create_compiler_path(xml_generator, compiler_path=None):
+    """Try to guess a path for the compiler.
+    Only needed with castxml on Mac or Linux.
+    """
+
+    if xml_generator == 'castxml' and compiler_path is None:
+        if platform.system() != 'Windows':
+            # On windows there is no need for the compiler path
+            p = subprocess.Popen(
+                ['which', 'clang++'], stdout=subprocess.PIPE)
+            compiler_path = p.stdout.read().decode("utf-8").rstrip()
+            # No clang found; use gcc
+            if compiler_path == '':
+                compiler_path = '/usr/bin/c++'
+
+    return compiler_path

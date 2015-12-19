@@ -17,6 +17,8 @@ import itertools
 import tempfile
 import functools
 import collections
+import platform
+import traceback
 from pprint import pprint, pformat
 from warnings import warn
 import gzip
@@ -250,28 +252,53 @@ def castxml_parse(filename, includes=(), defines=('XDRESS',), undefines=(),
         xmlname = drive.replace(':', '_') + xmlname
     xmlname = xmlname.replace(os.path.sep, '_').rsplit('.', 1)[0] + '.xml'
     xmlname = os.path.join(builddir, xmlname)
+    compiler_path = utils.create_compiler_path('castxml')
     cmd = ['castxml', '--castxml-gccxml', '-o', xmlname]
     cmd += extra_parser_args
     cmd += ['-I' + i for i in includes]
     cmd += ['-D' + d for d in defines]
     cmd += ['-U' + u for u in undefines]
+
+    # From pygccxml 1.7.1
+    # Clang option: -c Only run preprocess, compile, and assemble steps
+    cmd += ['-c']
+    # Clang option: make sure clang knows we want to parse c++
+    cmd += ['-x', 'c++']
+
+    # Platform specific options
+    if platform.system() == 'Windows':
+        if 'mingw' in compiler_path.lower():
+            # Look at the compiler path. This is a bad way
+            # to find out if we are using mingw; but it
+            # should probably work in most of the cases
+            cmd += ['--castxml-cc-gnu', compiler_path]
+        else:
+            # We are using msvc
+            cmd += ['--castxml-cc-msvc', 'cl']
+    else:
+        # On mac or linux, use gcc or clang (the flag is the same)
+        cmd += ['--castxml-cc-gnu', compiler_path]
+
     cmd += [filename]
-    print(" ".join(cmd))
+    
     if verbose:
         print(" ".join(cmd))
-    if os.path.isfile(xmlname):
-        f = io.open(xmlname, 'r+b')
-    else:
+
+    if not os.path.isfile(xmlname):
         ensuredirs(xmlname)
-        f = io.open(xmlname, 'w+b')
         subprocess.call(cmd)
+    
+    f = io.open(xmlname, 'r+b')
+
     f.seek(0)
+
     try:
         root = etree.parse(f)
     except etree.XMLSyntaxError:
-        raise etree.XMLSyntaxError("failed to parse CastXML results, this likely "
-                                   "means that the C/C++ code is not valid. please "
-                                   "see the top most build error.")
+        traceback.print_exception(*sys.exc_info())
+        raise SyntaxError("failed to parse CastXML results, this likely "
+                          "means that the C/C++ code is not valid. please "
+                          "see the top most build error.")
     f.close()
     return root
 

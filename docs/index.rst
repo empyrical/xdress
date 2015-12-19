@@ -62,6 +62,7 @@ XDress currently has the following external dependencies,
     #. `Clang/LLVM <http://llvm.org/releases/>`_, optional for C/C++
     #. `pycparser <https://bitbucket.org/eliben/pycparser>`_, optional for C
     #. `GCC-XML <http://www.gccxml.org/HTML/Index.html>`_, optional for C++
+    #. `CastXML <https://github.com/CastXML/CastXML>`_, optional for C++
     #. `dOxygen <http://www.doxygen.org/>`_, optional for docstrings
     #. `lxml <http://lxml.de/>`_, optional (but nice!)
     #. `argcomplete <https://argcomplete.readthedocs.org/en/latest/>`_, optional for BASH completion
