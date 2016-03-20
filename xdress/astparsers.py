@@ -10,7 +10,6 @@ from __future__ import print_function
 import os
 import io
 import sys
-from copy import deepcopy
 import linecache
 import subprocess
 import itertools
@@ -29,29 +28,11 @@ if os.name == 'nt':
     import ntpath
     import posixpath
 
-# GCC-XML conditional imports
-HAVE_LXML = False
+# pygccxml conditional imports
 try:
-    from lxml import etree
-    HAVE_LXML = True
+    import pygccxml
 except ImportError:
-    try:
-        # Python 2.5
-        import xml.etree.cElementTree as etree
-    except ImportError:
-        try:
-            # Python 2.5
-            import xml.etree.ElementTree as etree
-        except ImportError:
-            try:
-                # normal cElementTree install
-                import cElementTree as etree
-            except ImportError:
-                try:
-                    # normal ElementTree install
-                    import elementtree.ElementTree as etree
-                except ImportError:
-                    pass
+    pygccxml = None
 
 # pycparser conditional imports
 try:
@@ -78,19 +59,8 @@ from .plugins import Plugin
 PARSERS_AVAILABLE = {
     'clang': clang is not None,
     'pycparser': pycparser is not None,
+    'gccxml': pygccxml is not None,
     }
-with tempfile.NamedTemporaryFile() as f:
-    # If gccxml is not availble, an OSError is raised.  Otherwise, it will
-    # return 0 (typically indicates successful invocation).
-    try:
-        retcode = subprocess.call(['gccxml'], stdout=f, stderr=f)
-        if retcode == 0:
-            PARSERS_AVAILABLE['gccxml'] = True
-        else:
-            PARSERS_AVAILABLE['gccxml'] = False
-    except OSError:
-        PARSERS_AVAILABLE['gccxml'] = False
-del f
 
 if sys.version_info[0] >= 3:
     basestring = str
@@ -178,33 +148,26 @@ def gccxml_parse(filename, includes=(), defines=('XDRESS',), undefines=(),
     root : XML etree
         An in memory tree representing the parsed file.
     """
-    drive, xmlname = os.path.splitdrive(filename)
-    if len(drive) > 0:
-        # Windows drive handling, 'C:' -> 'C_'
-        xmlname = drive.replace(':', '_') + xmlname
-    xmlname = xmlname.replace(os.path.sep, '_').rsplit('.', 1)[0] + '.xml'
-    xmlname = os.path.join(builddir, xmlname)
-    cmd = ['gccxml', filename, '-fxml=' + xmlname]
-    cmd += ['-I' + i for i in includes]
-    cmd += ['-D' + d for d in defines]
-    cmd += ['-U' + u for u in undefines]
-    cmd += extra_parser_args
-    if verbose:
-        print(" ".join(cmd))
-    if os.path.isfile(xmlname):
-        f = io.open(xmlname, 'r+b')
-    else:
-        ensuredirs(xmlname)
-        f = io.open(xmlname, 'w+b')
-        subprocess.call(cmd)
-    f.seek(0)
+
+    # Find the location of the xml generator (castxml or gccxml)
+    # TODO: This could be made configurable
+    generator_path, generator_name = pygccxml.utils.find_xml_generator()
+
+    # Configure the xml generator
+    xml_generator_config = pygccxml.parser.xml_generator_configuration_t(
+        xml_generator_path=generator_path,
+        xml_generator=generator_name,
+        include_paths=includes,
+        define_symbols=defines,
+        undefine_symbols=undefines,)
+
     try:
-        root = etree.parse(f)
-    except etree.XMLSyntaxError:
-        raise etree.XMLSyntaxError("failed to parse GCC-XML results, this likely "
-                                   "means that the C/C++ code is not valid. please "
-                                   "see the top most build error.")
-    f.close()
+        root = pygccxml.parser.parse([filename], xml_generator_config)[0]
+    except RuntimeError as e:
+        raise RuntimeError("failed to parse GCC-XML results, this likely "
+                           "means that the C/C++ code is not valid. please "
+                           "see the top most build error.")
+
     return root
 
 #

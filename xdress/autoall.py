@@ -47,6 +47,11 @@ except ImportError:
     pycparser = None
 
 try:
+    import pygccxml
+except ImportError:
+    pygccxml = None
+
+try:
     from . import clang
     from .clang.cindex import CursorKind
 except ImportError:
@@ -85,9 +90,18 @@ class GccxmlFinder(object):
         origonlyin = onlyin
         onlyin = [onlyin] if isinstance(onlyin, basestring) else onlyin
         onlyin = set() if onlyin is None else set(onlyin)
-        onlyin = [root.find("File[@name='{0}']".format(oi)) for oi in onlyin]
-        self.onlyin = set([oi.attrib['id'] for oi in onlyin if oi is not None])
-        if 0 == len(self.onlyin):
+
+        # TODO: There's probably a much better way to get the list of files in pygccxml
+        files = []
+
+        if root is not None:
+            for decl in root.declarations:
+                if decl.location and decl.location.file_name not in files:
+                    files.append(decl.location.file_name)
+
+        self.onlyin = set([os.path.abspath(oi) for oi in onlyin if oi is not None])
+
+        if len(self.onlyin) == 0:
             msg = ("None of these files are present: {0!r}; "
                    "autodescribing will probably fail.")
             msg = msg.format(origonlyin)
@@ -146,17 +160,35 @@ class GccxmlFinder(object):
                 names += self.visit_kinds(node, k)
             names = [n for n in names if n not in FORBIDDEN_NAMES]
             return names
+
         names = set()
-        for child in node.iterfind(".//" + kinds):
-            if child.attrib.get('file', None) not in self.onlyin:
+
+        if kinds == "Enumeration":
+            search_fun = node.enumerations
+        elif kinds == "Function":
+            search_fun = node.free_functions
+        elif kinds in ["Class", "Struct"]:
+            search_fun = node.classes
+        else:
+            raise RuntimeError("Unknown node kind `{0}` provided".format(kind))
+
+        try:
+            results = search_fun().declarations
+        except RuntimeError:
+            results = []
+
+        for child in results:
+            if child.location.file_name not in self.onlyin:
                 continue
-            name = child.attrib.get('name', '_')
-            if name.startswith('_'):
+
+            if child.name.startswith('_'):
                 continue
-            if name in FORBIDDEN_NAMES:
+            if child.name in FORBIDDEN_NAMES:
                 continue
-            names.add(utils.parse_template(name))
+
+            names.add(utils.parse_template(child.name))
             self._pprint(child)
+
         return sorted(names)
             
 

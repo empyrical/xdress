@@ -29,6 +29,11 @@ try:
 except ImportError:
     from ._enum import Enum, IntEnum
 
+try:
+    import pygccxml
+except ImportError:
+    pygccxml = None
+
 import numpy as np
 
 if sys.version_info[0] >= 3:
@@ -709,6 +714,21 @@ def memoize(obj):
         else:
             return obj(*args, **kwargs)
     return memoizer
+
+def pygccxml_construct(obj):
+    """Takes a pygccxml object and turns it into a string, like 'namespace'
+    Used for the 'construct' key in descriptions
+    """
+    obj_type = type(obj)
+
+    if obj_type == pygccxml.declarations.namespace_t:
+        return 'namespace'
+    elif obj_type == pygccxml.declarations.class_t:
+        # class, union, or struct
+        return obj.class_type
+    else:
+        raise RuntimeError('Unsupported object type `{0}` passed to pygccxml_construct()!'
+                            .format(obj_type.__name__))
 
 class memoize_method(object):
     """Decorator suitable for memoizing methods, rather than functions

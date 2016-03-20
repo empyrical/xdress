@@ -230,7 +230,6 @@ import io
 import re
 import sys
 import ast
-from copy import deepcopy
 import linecache
 import subprocess
 import itertools
@@ -258,7 +257,8 @@ except ImportError:
 from . import utils
 from .utils import exec_file, RunControl, NotSpecified, Arg, merge_descriptions, \
     find_source, FORBIDDEN_NAMES, find_filenames, warn_forbidden_name, apiname, \
-    ensure_apiname, c_literal, extra_filenames, newoverwrite, _lang_exts
+    ensure_apiname, c_literal, extra_filenames, newoverwrite, _lang_exts, \
+    pygccxml_construct
 from . import astparsers
 from .types.system import TypeSystem
 
@@ -467,23 +467,22 @@ class GccxmlBaseDescriber(object):
         onlyin = set() if onlyin is None else set(onlyin)
         self.onlyin = set()
         self._filemap = {}
-        for fnode in root.iterfind("File"):
-            fid = fnode.attrib['id']
-            fname = fnode.attrib['name']
 
-            self._filemap[fid] = fname
-        for fname in onlyin:
-            fnode = root.find("File[@name='{0}']".format(fname))
-            if fnode is None:
-                fnode = root.find("File[@name='./{0}']".format(fname))
-                if fnode is None:
-                    continue
-            fid = fnode.attrib['id']
-            self.onlyin.add(fid)
-        if 0 == len(self.onlyin):
+        # TODO: There's probably a much better way to get the list of files in pygccxml
+        files = []
+
+        if root is not None:
+            for decl in root.declarations:
+                if decl.location and decl.location.file_name not in files:
+                    files.append(decl.location.file_name)
+
+        self.onlyin = set([os.path.abspath(oi) for oi in onlyin if oi is not None])
+
+        if len(self.onlyin) == 0:
             msg = "{0!r} is not present in {1!r}; autodescribing will probably fail."
             msg = msg.format(name, origonlyin)
             warn(msg, RuntimeWarning)
+
         self._currfunc = []  # this must be a stack to handle nested functions
         self._currfuncsig = None
         self._currargkind = None
@@ -614,20 +613,21 @@ class GccxmlBaseDescriber(object):
     def visit_class(self, node):
         """visits a class or struct."""
         self._pprint(node)
-        name = node.attrib['name']
+        name = node.name
         self._currclass.append(name)
         if self._describes == 'class' and (name == self.ts.gccxml_type(self.name) or
                                            name == self._name):
-            if 'bases' not in node.attrib:
+            if not hasattr(node, 'bases'):
                 msg = ("The type {0!r} is used as part of an API element but no "
                        "declarations were made with it.  Please declare a variable "
                        "of type {0!r} somewhere in the source or header.")
                 raise NotImplementedError(msg.format(name))
-            bases = node.attrib['bases'].split()
+            bases = node.bases
             # TODO: Record whether bases are public, private, or protected
-            bases = [self.type(b.replace('private:','')) for b in bases]
+            # TODO: uncomment this line and adapt it for pygccxml
+            #bases = [self.type(b.replace('private:','')) for b in bases]
             self.desc['parents'] = bases
-            ns = self.context(node.attrib['context'])
+            ns = node.parent
             if ns is not None and ns != "::":
                 self.desc['namespace'] = ns
         if '<' in name and name.endswith('>'):
@@ -936,8 +936,10 @@ class GccxmlClassDescriber(GccxmlBaseDescriber):
             if not isinstance(self.name, basestring) and self.name not in self.ts.argument_kinds:
                 node = self._find_class_node()
             if node is None:
-                query = "Class[@name='{0}']".format(self.ts.gccxml_type(self.name))
-                node = self._root.find(query)
+                try:
+                    node = self._root.class_(self.ts.gccxml_type(self.name))
+                except RuntimeError:
+                    pass
             if node is None:
                 query = "Struct[@name='{0}']".format(self.ts.gccxml_type(self.name))
                 node = self._root.find(query)
@@ -949,23 +951,25 @@ class GccxmlClassDescriber(GccxmlBaseDescriber):
                 node = self._find_class_node()
             if node is None:
                 raise RuntimeError("could not find class {0!r}".format(self.name))
-            if node.attrib['file'] not in self.onlyin:
-                msg = ("{0} autodescribing failed: found class in {1!r} ({2!r}) but "
-                       "expected it in {3}.")
-                fid = node.attrib['file']
-                ois = ", ".join(["{0!r} ({1!r})".format(self._filemap[v], v) \
-                                                 for v in sorted(self.onlyin)])
+            if node.location.file_name not in self.onlyin:
+                msg = ("{0} autodescribing failed: found class in {1!r} but "
+                       "expected it in {2}.")
+                fid = node.location.file_name
+                ois = ", ".join(sorted(self.onlyin))
                 print("ONLYIN =", self.onlyin)
-                msg = msg.format(self.name, self._filemap[fid], fid, ois)
+                msg = msg.format(self.name, fid, ois)
                 raise RuntimeError(msg)
-            self.desc['construct'] = node.tag.lower()
+            self.desc['construct'] = pygccxml_construct(node)
             self.visit_class(node)
-        members = node.attrib.get('members', '').strip().split()
-        children = [self._root.find(".//*[@id='{0}']".format(m)) for m in members]
-        children = [c for c in children if c.attrib['access'] == 'public']
+
+        if hasattr(node, 'public_members'):
+            children = node.public_members
+        else:
+            children = []
+
         self._level += 1
         for child in children:
-            tag = child.tag.lower()
+            tag = child.__class__.__name__.lower()
             meth_name = 'visit_' + tag
             meth = getattr(self, meth_name, None)
             if meth is not None:
